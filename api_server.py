@@ -1,6 +1,7 @@
 """HTTP API сервер для LinkedIn парсера"""
 from flask import Flask, request, jsonify
 import logging
+import json
 import os
 from config import Config
 from proxy_manager import ProxyManager
@@ -54,11 +55,22 @@ def parse_profile():
     }
     """
     try:
-        data = request.get_json()
+        # Более гибкий парсинг JSON
+        data = None
+        
+        if request.is_json:
+            data = request.get_json()
+        elif request.data:
+            try:
+                data = json.loads(request.data)
+            except:
+                data = None
         
         if not data or 'url' not in data:
+            logger.warning(f"Неполные данные запроса: {data}")
             return jsonify({
-                'error': 'Missing required field: url'
+                'error': 'Missing required field: url',
+                'received': str(data)
             }), 400
         
         url = data['url']
