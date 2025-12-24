@@ -8,6 +8,11 @@ from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.chrome.options import Options
 from config import Config
+from typing import Optional
+try:
+    from auth_manager import AuthManager
+except Exception:
+    AuthManager = None  # type: ignore
 
 logger = logging.getLogger(__name__)
 
@@ -15,7 +20,7 @@ logger = logging.getLogger(__name__)
 class BrowserParser:
     """Класс для парсинга LinkedIn страниц с использованием браузера"""
     
-    def __init__(self, config: Config):
+    def __init__(self, config: Config, auth_manager: Optional["AuthManager"] = None):
         """
         Инициализация BrowserParser
         
@@ -23,6 +28,7 @@ class BrowserParser:
             config: Объект конфигурации
         """
         self.config = config
+        self.auth_manager = auth_manager
         self.driver = None
         self._init_driver()
     
@@ -64,6 +70,9 @@ class BrowserParser:
             logger.warning(f"Ошибка инициализации Selenium: {e}")
             self.driver = None
     
+    def set_auth_manager(self, auth_manager: "AuthManager") -> None:
+        self.auth_manager = auth_manager
+
     def fetch_profile(self, url: str, timeout: int = 30) -> Optional[str]:
         """
         Получить HTML страницы профиля с помощью браузера
@@ -81,6 +90,14 @@ class BrowserParser:
         
         try:
             logger.info(f"Загрузка профиля браузером: {url}")
+
+            # Если есть cookies – применим их перед переходом
+            if self.auth_manager and self.auth_manager.has_cookies():
+                try:
+                    self.auth_manager.apply_to_selenium(self.driver)
+                    logger.info("Аутентификационные cookies применены к браузеру")
+                except Exception as e:
+                    logger.warning(f"Не удалось применить cookies к браузеру: {e}")
             
             # Имитируем человеческое поведение - добавляем случайные задержки
             self.driver.get(url)

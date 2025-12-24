@@ -11,6 +11,10 @@ from config import Config
 from proxy_manager import ProxyManager
 from rate_limiter import RateLimiter
 from session_manager import SessionManager
+try:
+    from auth_manager import AuthManager
+except Exception:
+    AuthManager = None  # type: ignore
 
 logger = logging.getLogger(__name__)
 
@@ -25,7 +29,7 @@ except ImportError:
 class LinkedInParser:
     """Класс для парсинга профилей LinkedIn"""
     
-    def __init__(self, config: Config, proxy_manager: ProxyManager, rate_limiter: RateLimiter, session_manager: SessionManager = None):
+    def __init__(self, config: Config, proxy_manager: ProxyManager, rate_limiter: RateLimiter, session_manager: SessionManager = None, auth_manager: "AuthManager" = None):
         """
         Инициализация LinkedInParser
         
@@ -44,12 +48,13 @@ class LinkedInParser:
         self.max_retries = config.get('linkedin.max_retries', 3)
         self.retry_delay = config.get('linkedin.retry_delay', 5)
         self.user_agents = config.get('user_agents', [])
+        self.auth_manager = auth_manager
         
         # Инициализируем браузерный парсер для обхода 999 ошибок
         self.browser_parser = None
         if BROWSER_PARSER_AVAILABLE:
             try:
-                self.browser_parser = BrowserParser(config)
+                self.browser_parser = BrowserParser(config, auth_manager=self.auth_manager)
                 logger.info("BrowserParser успешно инициализирован для обхода блокировок")
             except Exception as e:
                 logger.warning(f"Ошибка инициализации BrowserParser: {e}")
@@ -81,6 +86,10 @@ class LinkedInParser:
                 logger.info(f"User-Agent: {session.headers.get('User-Agent', 'Не указан')}")
                 
                 # Используем сессию вместо requests.get
+                # Применяем аутентификационные cookies, если есть
+                if self.auth_manager and self.auth_manager.has_cookies():
+                    self.auth_manager.apply_to_requests_session(session)
+
                 response = session.get(
                     url,
                     proxies=proxy,
@@ -143,6 +152,12 @@ class LinkedInParser:
                     # Если это последняя попытка и браузер доступен, пробуем браузерный парсинг
                     if attempt == self.max_retries - 1 and self.browser_parser:
                         logger.info("Переходим на браузерный парсинг для обхода блокировки...")
+                        # Обновим cookies в браузере, если нужно
+                        if self.auth_manager and self.browser_parser:
+                            try:
+                                self.browser_parser.set_auth_manager(self.auth_manager)
+                            except Exception:
+                                pass
                         browser_html = self.browser_parser.fetch_profile(url, timeout=self.timeout)
                         if browser_html and not self.browser_parser.check_blockage():
                             logger.info("✓ Браузерный парсинг успешен!")

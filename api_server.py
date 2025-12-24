@@ -8,6 +8,7 @@ from proxy_manager import ProxyManager
 from rate_limiter import RateLimiter
 from linkedin_parser import LinkedInParser
 from data_exporter import DataExporter
+from auth_manager import AuthManager
 
 app = Flask(__name__)
 
@@ -35,6 +36,7 @@ rate_limiter = RateLimiter(
     enabled=config.get('rate_limiting.enabled', True)
 )
 exporter = DataExporter(config.get('output.directory', 'output'))
+auth_manager = AuthManager(config)
 
 @app.route('/health', methods=['GET'])
 def health():
@@ -78,7 +80,7 @@ def parse_profile():
         logger.info(f"Полные данные запроса: {data}")
         
         # Создаем парсер
-        parser = LinkedInParser(config, proxy_manager, rate_limiter)
+        parser = LinkedInParser(config, proxy_manager, rate_limiter, auth_manager=auth_manager)
         
         # Парсим профиль
         logger.info("Начало парсинга профиля...")
@@ -148,7 +150,7 @@ def parse_batch():
         
         logger.info(f"Получен запрос на парсинг {len(urls)} профилей")
         
-        parser = LinkedInParser(config, proxy_manager, rate_limiter)
+        parser = LinkedInParser(config, proxy_manager, rate_limiter, auth_manager=auth_manager)
         results = []
         
         for url in urls:
@@ -191,6 +193,36 @@ def parse_batch():
             'status': 'error',
             'error': str(e)
         }), 500
+
+@app.route('/auth/cookies', methods=['POST'])
+def set_cookies():
+    """Установка cookies для аутентифицированного доступа к LinkedIn.
+
+    Body JSON варианты:
+    - {"cookie": "li_at=...; JSESSIONID=...;"}
+    - {"li_at": "...", "JSESSIONID": "..."}
+    """
+    try:
+        data = request.get_json(silent=True) or {}
+        if not data:
+            return jsonify({'status': 'error', 'error': 'empty body'}), 400
+
+        if 'cookie' in data and isinstance(data['cookie'], str):
+            auth_manager.set_cookie_string(data['cookie'])
+        else:
+            # Соберем словарь из известных ключей
+            cookies = {}
+            for k in ['li_at', 'JSESSIONID', 'JSESSIONID']:  # поддержка вариантов регистра
+                if k in data and isinstance(data[k], str):
+                    cookies[k] = data[k]
+            if not cookies:
+                return jsonify({'status': 'error', 'error': 'no cookies provided'}), 400
+            auth_manager.set_cookies(cookies)
+
+        return jsonify({'status': 'ok', 'applied': auth_manager.get_sanitized()}), 200
+    except Exception as e:
+        logger.error(f"Ошибка установки cookies: {e}")
+        return jsonify({'status': 'error', 'error': str(e)}), 500
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
