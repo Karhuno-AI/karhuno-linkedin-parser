@@ -70,23 +70,31 @@ class LinkedInParser:
         for attempt in range(self.max_retries):
             try:
                 proxy = self.proxy_manager.get_proxy()
+                headers = self._get_headers()
                 
                 logger.info(f"Загрузка страницы: {url} (попытка {attempt + 1}/{self.max_retries})")
+                logger.debug(f"Используемый прокси: {proxy if proxy else 'Нет (прямое соединение)'}")
+                logger.debug(f"User-Agent: {headers.get('User-Agent', 'Не указан')}")
                 
                 response = requests.get(
                     url,
-                    headers=self._get_headers(),
+                    headers=headers,
                     proxies=proxy,
                     timeout=self.timeout,
                     allow_redirects=True
                 )
                 
+                logger.info(f"Получен ответ: статус {response.status_code}, размер {len(response.content)} байт")
+                logger.debug(f"Заголовки ответа: {dict(response.headers)}")
+                
                 if response.status_code == 200:
                     soup = BeautifulSoup(response.text, 'html.parser')
                     logger.info("Страница успешно загружена")
+                    logger.debug(f"Размер HTML: {len(response.text)} символов")
                     return soup
                 elif response.status_code == 403:
                     logger.warning(f"Доступ запрещен (403). LinkedIn блокирует запросы.")
+                    logger.debug(f"Содержимое ответа (первые 500 символов): {response.text[:500]}")
                     if proxy:
                         self.proxy_manager.mark_failed(proxy)
                     if attempt < self.max_retries - 1:
@@ -96,25 +104,36 @@ class LinkedInParser:
                     return None
                 elif response.status_code == 404:
                     logger.error("Профиль не найден (404)")
+                    logger.debug(f"Содержимое ответа: {response.text[:500]}")
                     return None
                 elif response.status_code == 999:
                     logger.warning(f"LinkedIn блокирует запросы (999). Это защита от автоматизированного доступа.")
+                    logger.debug(f"Содержимое ответа (первые 1000 символов): {response.text[:1000]}")
+                    logger.debug(f"URL после редиректа: {response.url}")
                     if proxy:
+                        logger.debug(f"Прокси помечен как неработающий: {proxy}")
                         self.proxy_manager.mark_failed(proxy)
                     if attempt < self.max_retries - 1:
                         import time
-                        time.sleep(self.retry_delay * 2)  # Увеличиваем задержку для 999
+                        wait_time = self.retry_delay * 2
+                        logger.info(f"Ожидание {wait_time} секунд перед следующей попыткой...")
+                        time.sleep(wait_time)
                         continue
                     return None
                 elif response.status_code == 429:
                     logger.warning(f"Слишком много запросов (429). Rate limit превышен.")
+                    logger.debug(f"Retry-After заголовок: {response.headers.get('Retry-After', 'не указан')}")
                     if attempt < self.max_retries - 1:
                         import time
-                        time.sleep(self.retry_delay * 3)  # Увеличиваем задержку для 429
+                        wait_time = self.retry_delay * 3
+                        logger.info(f"Ожидание {wait_time} секунд перед следующей попыткой...")
+                        time.sleep(wait_time)
                         continue
                     return None
                 else:
                     logger.warning(f"Неожиданный статус код: {response.status_code}")
+                    logger.debug(f"Содержимое ответа (первые 500 символов): {response.text[:500]}")
+                    logger.debug(f"URL после редиректа: {response.url}")
                     if proxy:
                         self.proxy_manager.mark_failed(proxy)
                     if attempt < self.max_retries - 1:
@@ -124,24 +143,50 @@ class LinkedInParser:
                     
             except requests.exceptions.InvalidURL as e:
                 logger.error(f"Неверный URL прокси: {e}")
+                logger.debug(f"Прокси, вызвавший ошибку: {proxy}")
                 if proxy:
                     self.proxy_manager.mark_failed(proxy)
                 # Пробуем без прокси
                 proxy = None
                 if attempt < self.max_retries - 1:
                     import time
+                    logger.info(f"Повторная попытка без прокси через {self.retry_delay} секунд...")
                     time.sleep(self.retry_delay)
                     continue
-            except requests.exceptions.RequestException as e:
-                logger.error(f"Ошибка запроса: {e}")
+            except requests.exceptions.Timeout as e:
+                logger.error(f"Таймаут запроса: {e}")
+                logger.debug(f"URL: {url}, таймаут: {self.timeout} секунд")
                 if proxy:
                     self.proxy_manager.mark_failed(proxy)
                 if attempt < self.max_retries - 1:
                     import time
+                    logger.info(f"Повторная попытка через {self.retry_delay} секунд...")
+                    time.sleep(self.retry_delay)
+                    continue
+            except requests.exceptions.ConnectionError as e:
+                logger.error(f"Ошибка соединения: {e}")
+                logger.debug(f"Прокси: {proxy if proxy else 'Нет'}")
+                if proxy:
+                    self.proxy_manager.mark_failed(proxy)
+                if attempt < self.max_retries - 1:
+                    import time
+                    logger.info(f"Повторная попытка через {self.retry_delay} секунд...")
+                    time.sleep(self.retry_delay)
+                    continue
+            except requests.exceptions.RequestException as e:
+                logger.error(f"Ошибка запроса: {type(e).__name__}: {e}")
+                logger.debug(f"Детали ошибки: {str(e)}")
+                if proxy:
+                    self.proxy_manager.mark_failed(proxy)
+                if attempt < self.max_retries - 1:
+                    import time
+                    logger.info(f"Повторная попытка через {self.retry_delay} секунд...")
                     time.sleep(self.retry_delay)
                     continue
             except Exception as e:
-                logger.error(f"Неожиданная ошибка: {e}")
+                logger.error(f"Неожиданная ошибка: {type(e).__name__}: {e}")
+                import traceback
+                logger.debug(f"Трассировка: {traceback.format_exc()}")
                 if attempt < self.max_retries - 1:
                     import time
                     time.sleep(self.retry_delay)
@@ -665,17 +710,21 @@ class LinkedInParser:
         soup = self._fetch_page(url)
         
         if not soup:
-            logger.error("Не удалось загрузить страницу профиля")
+            logger.error("Не удалось загрузить страницу профиля после всех попыток")
+            logger.error(f"URL: {url}, попыток: {self.max_retries}")
             return {
                 'element': {},
                 'status': 'error',
                 'error': 'Failed to load profile page',
                 'errorDetails': {
                     'message': 'LinkedIn блокирует запросы или профиль недоступен. Возможные причины: профиль приватный, LinkedIn блокирует автоматизированные запросы (статус 999), или проблемы с прокси.',
+                    'url': url,
+                    'attempts': self.max_retries,
                     'suggestions': [
                         'Проверьте, что профиль публичный',
                         'Попробуйте позже (LinkedIn может временно блокировать IP)',
-                        'Используйте авторизованный доступ для полных данных'
+                        'Используйте авторизованный доступ для полных данных',
+                        'Проверьте логи для детальной информации об ошибках'
                     ]
                 }
             }

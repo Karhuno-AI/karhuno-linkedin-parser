@@ -41,13 +41,17 @@ class ProxyManager:
         """
         try:
             logger.info("Получение списка прокси через ProxyScrape API...")
+            logger.debug(f"URL API прокси: {self.api_url}")
             response = requests.get(self.api_url, timeout=10)
+            
+            logger.debug(f"Ответ API прокси: статус {response.status_code}, размер {len(response.text)} байт")
             
             if response.status_code == 200:
                 # Прокси возвращаются в виде текста, по одному на строку
                 raw_proxies = response.text.strip().split('\n')
                 # Фильтруем пустые строки, валидируем формат и ограничиваем количество
                 valid_proxies = []
+                invalid_count = 0
                 for p in raw_proxies:
                     p = p.strip()
                     if not p:
@@ -57,7 +61,15 @@ class ProxyManager:
                         parts = p.split(':')
                         if len(parts) == 2 and parts[0] and parts[1]:
                             valid_proxies.append(p)
+                        else:
+                            invalid_count += 1
+                            logger.debug(f"Неверный формат прокси: {p}")
+                    else:
+                        invalid_count += 1
+                        logger.debug(f"Прокси содержит недопустимые символы: {p[:50]}")
+                
                 self.proxies = valid_proxies[:self.max_proxies]
+                logger.info(f"Валидных прокси: {len(self.proxies)}, невалидных: {invalid_count}")
                 
                 # Удаляем уже неработающие прокси
                 self.proxies = [p for p in self.proxies if p not in self.failed_proxies]
