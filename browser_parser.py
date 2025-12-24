@@ -2,6 +2,11 @@
 import logging
 import time
 from typing import Optional, Dict
+try:
+    import undetected_chromedriver as uc  # type: ignore
+    _USE_UC = True
+except Exception:
+    _USE_UC = False
 from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
@@ -54,7 +59,11 @@ class BrowserParser:
             # Отключаем логи
             chrome_options.add_argument('--log-level=3')
             
-            self.driver = webdriver.Chrome(options=chrome_options)
+            if _USE_UC:
+                self.driver = uc.Chrome(options=chrome_options)
+                logger.info("Using undetected-chromedriver for stealth")
+            else:
+                self.driver = webdriver.Chrome(options=chrome_options)
             
             # Эмулируем человеческое поведение
             self.driver.execute_cdp_cmd('Network.emulateNetworkConditions', {

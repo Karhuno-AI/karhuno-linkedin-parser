@@ -11,6 +11,7 @@ from config import Config
 from proxy_manager import ProxyManager
 from rate_limiter import RateLimiter
 from session_manager import SessionManager
+from fallback_fetcher import fetch_via_jina_reader, fetch_via_google_cache, fetch_via_wayback
 try:
     from auth_manager import AuthManager
 except Exception:
@@ -175,6 +176,17 @@ class LinkedInParser:
                         logger.info(f"Ожидание {wait_time} секунд перед следующей попыткой (увеличенная задержка для 999)...")
                         time.sleep(wait_time)
                         continue
+                    # Последняя попытка: попробуем cookie-less фоллбэки
+                    logger.info("Переходим к cookie-less фоллбэкам (Jina/Cache/Wayback)...")
+                    for fetcher in (fetch_via_jina_reader, fetch_via_google_cache, fetch_via_wayback):
+                        try:
+                            html = fetcher(url)
+                            if html:
+                                soup = BeautifulSoup(html, 'html.parser')
+                                logger.info("Fallback источник дал контент: %d символов", len(html))
+                                return soup
+                        except Exception as e:
+                            logger.warning(f"Ошибка fallback источника: {e}")
                     return None
                 elif response.status_code == 429:
                     logger.warning(f"Слишком много запросов (429). Rate limit превышен.")

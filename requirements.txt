@@ -4,3 +4,4 @@ lxml>=4.9.0
 selenium>=4.0.0
 playwright>=1.40.0
 flask>=2.3.0
+undetected-chromedriver>=3.5.5
