@@ -3,6 +3,7 @@ import requests
 import time
 import logging
 import random
+import json
 from typing import Optional, List, Dict, Set
 from config import Config
 from datetime import datetime
@@ -177,7 +178,7 @@ class ProxyManager:
             Список валидных прокси
         """
         try:
-            data = requests.json(text)
+            data = json.loads(text)
             proxies = []
             
             # Для proxy-list.download API

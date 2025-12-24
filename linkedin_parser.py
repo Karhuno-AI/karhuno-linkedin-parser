@@ -14,6 +14,14 @@ from session_manager import SessionManager
 
 logger = logging.getLogger(__name__)
 
+# Попытаемся импортировать браузерный парсер
+try:
+    from browser_parser import BrowserParser
+    BROWSER_PARSER_AVAILABLE = True
+except ImportError:
+    BROWSER_PARSER_AVAILABLE = False
+    logger.warning("BrowserParser не доступен - браузерный парсинг отключен")
+
 class LinkedInParser:
     """Класс для парсинга профилей LinkedIn"""
     
@@ -36,6 +44,15 @@ class LinkedInParser:
         self.max_retries = config.get('linkedin.max_retries', 3)
         self.retry_delay = config.get('linkedin.retry_delay', 5)
         self.user_agents = config.get('user_agents', [])
+        
+        # Инициализируем браузерный парсер для обхода 999 ошибок
+        self.browser_parser = None
+        if BROWSER_PARSER_AVAILABLE:
+            try:
+                self.browser_parser = BrowserParser(config)
+                logger.info("BrowserParser успешно инициализирован для обхода блокировок")
+            except Exception as e:
+                logger.warning(f"Ошибка инициализации BrowserParser: {e}")
     
     def _fetch_page(self, url: str) -> Optional[BeautifulSoup]:
         """
@@ -122,6 +139,18 @@ class LinkedInParser:
                     if proxy:
                         logger.info(f"Прокси помечен как неработающий: {proxy}")
                         self.proxy_manager.mark_failed(proxy)
+                    
+                    # Если это последняя попытка и браузер доступен, пробуем браузерный парсинг
+                    if attempt == self.max_retries - 1 and self.browser_parser:
+                        logger.info("Переходим на браузерный парсинг для обхода блокировки...")
+                        browser_html = self.browser_parser.fetch_profile(url, timeout=self.timeout)
+                        if browser_html and not self.browser_parser.check_blockage():
+                            logger.info("✓ Браузерный парсинг успешен!")
+                            soup = BeautifulSoup(browser_html, 'html.parser')
+                            return soup
+                        else:
+                            logger.warning("✗ Браузерный парсинг также заблокирован")
+                            return None
                     
                     # Создаем новую сессию полностью
                     self.session_manager.create_new_session_for_ip(proxy.replace('http://', '') if proxy else 'unknown')

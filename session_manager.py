@@ -42,6 +42,21 @@ class SessionManager:
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36 Edg/119.0.0.0",
     ]
     
+    # Реалистичные браузерные заголовки
+    BROWSER_HEADERS = {
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
+        'Accept-Encoding': 'gzip, deflate, br',
+        'Accept-Language': 'ru-RU,ru;q=0.9,en-US;q=0.8,en;q=0.7',
+        'Cache-Control': 'max-age=0',
+        'Connection': 'keep-alive',
+        'Sec-Fetch-Dest': 'document',
+        'Sec-Fetch-Mode': 'navigate',
+        'Sec-Fetch-Site': 'none',
+        'Sec-Fetch-User': '?1',
+        'Upgrade-Insecure-Requests': '1',
+        'DNT': '1',
+    }
+    
     def __init__(self, config: Config):
         """
         Инициализация SessionManager
@@ -60,7 +75,7 @@ class SessionManager:
     
     def _create_session(self) -> str:
         """
-        Создание новой сессии
+        Создание новой сессии с реалистичными браузерными заголовками
         
         Returns:
             ID сессии
@@ -71,25 +86,23 @@ class SessionManager:
         session = requests.Session()
         
         # Устанавливаем случайный User-Agent
-        session.headers.update({
-            'User-Agent': random.choice(self.user_agents)
-        })
+        user_agent = random.choice(self.user_agents)
         
-        # Базовые заголовки для браузера
-        session.headers.update({
-            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
-            'Accept-Language': 'en-US,en;q=0.5',
-            'Accept-Encoding': 'gzip, deflate, br',
-            'Connection': 'keep-alive',
-            'Upgrade-Insecure-Requests': '1',
-            'Sec-Fetch-Dest': 'document',
-            'Sec-Fetch-Mode': 'navigate',
-            'Sec-Fetch-Site': 'none',
-            'Cache-Control': 'max-age=0'
-        })
+        # Копируем браузерные заголовки и добавляем User-Agent
+        headers = self.BROWSER_HEADERS.copy()
+        headers['User-Agent'] = user_agent
+        
+        # Добавляем заголовки для LinkedIn специфично
+        headers['Referer'] = 'https://www.linkedin.com/'
+        headers['Origin'] = 'https://www.linkedin.com'
+        
+        session.headers.update(headers)
+        
+        # Увеличиваем timeout для долгих запросов
+        session.timeout = 30
         
         self.sessions[session_id] = session
-        logger.info(f"Создана новая сессия {session_id} с User-Agent: {session.headers['User-Agent']}")
+        logger.info(f"Создана новая сессия {session_id} с User-Agent: {user_agent}")
         
         return session_id
     
