@@ -46,7 +46,7 @@ class ProxyManager:
             if response.status_code == 200:
                 # Прокси возвращаются в виде текста, по одному на строку
                 raw_proxies = response.text.strip().split('\n')
-                # Фильтруем пустые строки и валидируем формат ip:port
+                # Фильтруем пустые строки, валидируем формат и ограничиваем количество
                 valid_proxies = []
                 for p in raw_proxies:
                     p = p.strip()
@@ -55,9 +55,8 @@ class ProxyManager:
                     # Проверяем формат ip:port
                     if ':' in p and not any(c in p for c in [' ', '\t', '\n', '\r']):
                         parts = p.split(':')
-                        if len(parts) == 2 and parts[1].isdigit():
+                        if len(parts) == 2 and parts[0] and parts[1]:
                             valid_proxies.append(p)
-                
                 self.proxies = valid_proxies[:self.max_proxies]
                 
                 # Удаляем уже неработающие прокси

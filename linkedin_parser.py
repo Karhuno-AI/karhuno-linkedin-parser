@@ -86,7 +86,7 @@ class LinkedInParser:
                     logger.info("Страница успешно загружена")
                     return soup
                 elif response.status_code == 403:
-                    logger.warning(f"Доступ запрещен (403). LinkedIn может блокировать запросы.")
+                    logger.warning(f"Доступ запрещен (403). LinkedIn блокирует запросы.")
                     if proxy:
                         self.proxy_manager.mark_failed(proxy)
                     if attempt < self.max_retries - 1:
@@ -98,12 +98,19 @@ class LinkedInParser:
                     logger.error("Профиль не найден (404)")
                     return None
                 elif response.status_code == 999:
-                    logger.warning(f"LinkedIn блокирует запросы (999). Требуется авторизация или профиль недоступен.")
+                    logger.warning(f"LinkedIn блокирует запросы (999). Это защита от автоматизированного доступа.")
                     if proxy:
                         self.proxy_manager.mark_failed(proxy)
                     if attempt < self.max_retries - 1:
                         import time
-                        time.sleep(self.retry_delay)
+                        time.sleep(self.retry_delay * 2)  # Увеличиваем задержку для 999
+                        continue
+                    return None
+                elif response.status_code == 429:
+                    logger.warning(f"Слишком много запросов (429). Rate limit превышен.")
+                    if attempt < self.max_retries - 1:
+                        import time
+                        time.sleep(self.retry_delay * 3)  # Увеличиваем задержку для 429
                         continue
                     return None
                 else:
@@ -115,6 +122,16 @@ class LinkedInParser:
                         time.sleep(self.retry_delay)
                         continue
                     
+            except requests.exceptions.InvalidURL as e:
+                logger.error(f"Неверный URL прокси: {e}")
+                if proxy:
+                    self.proxy_manager.mark_failed(proxy)
+                # Пробуем без прокси
+                proxy = None
+                if attempt < self.max_retries - 1:
+                    import time
+                    time.sleep(self.retry_delay)
+                    continue
             except requests.exceptions.RequestException as e:
                 logger.error(f"Ошибка запроса: {e}")
                 if proxy:
@@ -654,8 +671,12 @@ class LinkedInParser:
                 'status': 'error',
                 'error': 'Failed to load profile page',
                 'errorDetails': {
-                    'message': 'LinkedIn блокирует запросы без авторизации или профиль недоступен',
-                    'suggestion': 'LinkedIn активно защищает свои данные. Парсинг без авторизации может быть заблокирован.'
+                    'message': 'LinkedIn блокирует запросы или профиль недоступен. Возможные причины: профиль приватный, LinkedIn блокирует автоматизированные запросы (статус 999), или проблемы с прокси.',
+                    'suggestions': [
+                        'Проверьте, что профиль публичный',
+                        'Попробуйте позже (LinkedIn может временно блокировать IP)',
+                        'Используйте авторизованный доступ для полных данных'
+                    ]
                 }
             }
         
