@@ -1,0 +1,16 @@
+[Unit]
+Description=LinkedIn Parser Service
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/linkedin-parser
+Environment="PATH=/opt/linkedin-parser/venv/bin:/usr/local/bin:/usr/bin:/bin"
+ExecStart=/opt/linkedin-parser/venv/bin/python3 /opt/linkedin-parser/main.py
+Restart=on-failure
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
+
