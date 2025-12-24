@@ -73,18 +73,33 @@ def parse_profile():
                 'saved_to': filepath
             }), 200
         else:
+            error_msg = profile_data.get('error', 'Failed to parse profile')
+            error_details = profile_data.get('errorDetails', {})
+            
+            # Определяем HTTP код на основе типа ошибки
+            if '999' in str(error_msg) or 'block' in error_msg.lower():
+                http_code = 403
+            elif '404' in str(error_msg) or 'not found' in error_msg.lower():
+                http_code = 404
+            else:
+                http_code = 500
+            
             return jsonify({
                 'status': 'error',
-                'error': profile_data.get('error', 'Failed to parse profile'),
-                'data': profile_data
-            }), 500
+                'error': error_msg,
+                'errorDetails': error_details,
+                'data': profile_data,
+                'message': 'LinkedIn может блокировать запросы без авторизации. Публичные профили могут быть недоступны для парсинга.'
+            }), http_code
             
-    except Exception as e:
-        logger.error(f"Ошибка при парсинге: {e}")
-        return jsonify({
-            'status': 'error',
-            'error': str(e)
-        }), 500
+            except Exception as e:
+                logger.error(f"Ошибка при парсинге: {e}", exc_info=True)
+                return jsonify({
+                    'status': 'error',
+                    'error': str(e),
+                    'errorType': type(e).__name__,
+                    'message': 'Внутренняя ошибка сервера при обработке запроса'
+                }), 500
 
 @app.route('/parse/batch', methods=['POST'])
 def parse_batch():

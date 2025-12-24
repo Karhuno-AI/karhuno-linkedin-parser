@@ -97,6 +97,15 @@ class LinkedInParser:
                 elif response.status_code == 404:
                     logger.error("Профиль не найден (404)")
                     return None
+                elif response.status_code == 999:
+                    logger.warning(f"LinkedIn блокирует запросы (999). Требуется авторизация или профиль недоступен.")
+                    if proxy:
+                        self.proxy_manager.mark_failed(proxy)
+                    if attempt < self.max_retries - 1:
+                        import time
+                        time.sleep(self.retry_delay)
+                        continue
+                    return None
                 else:
                     logger.warning(f"Неожиданный статус код: {response.status_code}")
                     if proxy:
@@ -643,7 +652,11 @@ class LinkedInParser:
             return {
                 'element': {},
                 'status': 'error',
-                'error': 'Failed to load profile page'
+                'error': 'Failed to load profile page',
+                'errorDetails': {
+                    'message': 'LinkedIn блокирует запросы без авторизации или профиль недоступен',
+                    'suggestion': 'LinkedIn активно защищает свои данные. Парсинг без авторизации может быть заблокирован.'
+                }
             }
         
         # Извлечение базовой информации
