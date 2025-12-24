@@ -73,8 +73,9 @@ class LinkedInParser:
                 headers = self._get_headers()
                 
                 logger.info(f"Загрузка страницы: {url} (попытка {attempt + 1}/{self.max_retries})")
-                logger.debug(f"Используемый прокси: {proxy if proxy else 'Нет (прямое соединение)'}")
-                logger.debug(f"User-Agent: {headers.get('User-Agent', 'Не указан')}")
+                logger.info(f"Используемый прокси: {proxy if proxy else 'Нет (прямое соединение)'}")
+                logger.info(f"User-Agent: {headers.get('User-Agent', 'Не указан')}")
+                logger.info(f"Заголовки запроса: {dict(headers)}")
                 
                 response = requests.get(
                     url,
@@ -85,65 +86,78 @@ class LinkedInParser:
                 )
                 
                 logger.info(f"Получен ответ: статус {response.status_code}, размер {len(response.content)} байт")
-                logger.debug(f"Заголовки ответа: {dict(response.headers)}")
+                logger.info(f"Финальный URL после редиректов: {response.url}")
+                logger.info(f"Заголовки ответа: {dict(response.headers)}")
                 
                 if response.status_code == 200:
                     soup = BeautifulSoup(response.text, 'html.parser')
                     logger.info("Страница успешно загружена")
-                    logger.debug(f"Размер HTML: {len(response.text)} символов")
+                    logger.info(f"Размер HTML: {len(response.text)} символов")
+                    # Проверяем, что это действительно страница профиля
+                    if 'linkedin.com' not in response.url.lower():
+                        logger.warning(f"Возможный редирект на другую страницу: {response.url}")
                     return soup
                 elif response.status_code == 403:
                     logger.warning(f"Доступ запрещен (403). LinkedIn блокирует запросы.")
-                    logger.debug(f"Содержимое ответа (первые 500 символов): {response.text[:500]}")
+                    logger.warning(f"Содержимое ответа (первые 500 символов): {response.text[:500]}")
+                    logger.warning(f"Cookies в ответе: {dict(response.cookies)}")
                     if proxy:
+                        logger.info(f"Прокси помечен как неработающий: {proxy}")
                         self.proxy_manager.mark_failed(proxy)
                     if attempt < self.max_retries - 1:
                         import time
-                        time.sleep(self.retry_delay)
+                        wait_time = self.retry_delay
+                        logger.info(f"Ожидание {wait_time} секунд перед следующей попыткой...")
+                        time.sleep(wait_time)
                         continue
                     return None
                 elif response.status_code == 404:
                     logger.error("Профиль не найден (404)")
-                    logger.debug(f"Содержимое ответа: {response.text[:500]}")
+                    logger.error(f"Содержимое ответа: {response.text[:500]}")
                     return None
                 elif response.status_code == 999:
                     logger.warning(f"LinkedIn блокирует запросы (999). Это защита от автоматизированного доступа.")
-                    logger.debug(f"Содержимое ответа (первые 1000 символов): {response.text[:1000]}")
-                    logger.debug(f"URL после редиректа: {response.url}")
+                    logger.warning(f"Содержимое ответа (первые 1000 символов): {response.text[:1000]}")
+                    logger.warning(f"URL после редиректа: {response.url}")
+                    logger.warning(f"Cookies в ответе: {dict(response.cookies)}")
                     if proxy:
-                        logger.debug(f"Прокси помечен как неработающий: {proxy}")
+                        logger.info(f"Прокси помечен как неработающий: {proxy}")
                         self.proxy_manager.mark_failed(proxy)
                     if attempt < self.max_retries - 1:
                         import time
                         wait_time = self.retry_delay * 2
-                        logger.info(f"Ожидание {wait_time} секунд перед следующей попыткой...")
+                        logger.info(f"Ожидание {wait_time} секунд перед следующей попыткой (увеличенная задержка для 999)...")
                         time.sleep(wait_time)
                         continue
                     return None
                 elif response.status_code == 429:
                     logger.warning(f"Слишком много запросов (429). Rate limit превышен.")
-                    logger.debug(f"Retry-After заголовок: {response.headers.get('Retry-After', 'не указан')}")
+                    retry_after = response.headers.get('Retry-After', 'не указан')
+                    logger.warning(f"Retry-After заголовок: {retry_after}")
                     if attempt < self.max_retries - 1:
                         import time
                         wait_time = self.retry_delay * 3
-                        logger.info(f"Ожидание {wait_time} секунд перед следующей попыткой...")
+                        logger.info(f"Ожидание {wait_time} секунд перед следующей попыткой (увеличенная задержка для 429)...")
                         time.sleep(wait_time)
                         continue
                     return None
                 else:
                     logger.warning(f"Неожиданный статус код: {response.status_code}")
-                    logger.debug(f"Содержимое ответа (первые 500 символов): {response.text[:500]}")
-                    logger.debug(f"URL после редиректа: {response.url}")
+                    logger.warning(f"Содержимое ответа (первые 500 символов): {response.text[:500]}")
+                    logger.warning(f"URL после редиректа: {response.url}")
                     if proxy:
+                        logger.info(f"Прокси помечен как неработающий: {proxy}")
                         self.proxy_manager.mark_failed(proxy)
                     if attempt < self.max_retries - 1:
                         import time
-                        time.sleep(self.retry_delay)
+                        wait_time = self.retry_delay
+                        logger.info(f"Ожидание {wait_time} секунд перед следующей попыткой...")
+                        time.sleep(wait_time)
                         continue
                     
             except requests.exceptions.InvalidURL as e:
                 logger.error(f"Неверный URL прокси: {e}")
-                logger.debug(f"Прокси, вызвавший ошибку: {proxy}")
+                logger.error(f"Прокси, вызвавший ошибку: {proxy}")
                 if proxy:
                     self.proxy_manager.mark_failed(proxy)
                 # Пробуем без прокси
@@ -155,7 +169,7 @@ class LinkedInParser:
                     continue
             except requests.exceptions.Timeout as e:
                 logger.error(f"Таймаут запроса: {e}")
-                logger.debug(f"URL: {url}, таймаут: {self.timeout} секунд")
+                logger.error(f"URL: {url}, таймаут: {self.timeout} секунд, прокси: {proxy if proxy else 'Нет'}")
                 if proxy:
                     self.proxy_manager.mark_failed(proxy)
                 if attempt < self.max_retries - 1:
@@ -165,7 +179,7 @@ class LinkedInParser:
                     continue
             except requests.exceptions.ConnectionError as e:
                 logger.error(f"Ошибка соединения: {e}")
-                logger.debug(f"Прокси: {proxy if proxy else 'Нет'}")
+                logger.error(f"Прокси: {proxy if proxy else 'Нет'}, URL: {url}")
                 if proxy:
                     self.proxy_manager.mark_failed(proxy)
                 if attempt < self.max_retries - 1:
@@ -175,7 +189,8 @@ class LinkedInParser:
                     continue
             except requests.exceptions.RequestException as e:
                 logger.error(f"Ошибка запроса: {type(e).__name__}: {e}")
-                logger.debug(f"Детали ошибки: {str(e)}")
+                logger.error(f"Детали ошибки: {str(e)}")
+                logger.error(f"Прокси: {proxy if proxy else 'Нет'}")
                 if proxy:
                     self.proxy_manager.mark_failed(proxy)
                 if attempt < self.max_retries - 1:
@@ -186,9 +201,10 @@ class LinkedInParser:
             except Exception as e:
                 logger.error(f"Неожиданная ошибка: {type(e).__name__}: {e}")
                 import traceback
-                logger.debug(f"Трассировка: {traceback.format_exc()}")
+                logger.error(f"Трассировка: {traceback.format_exc()}")
                 if attempt < self.max_retries - 1:
                     import time
+                    logger.info(f"Повторная попытка через {self.retry_delay} секунд...")
                     time.sleep(self.retry_delay)
                     continue
         

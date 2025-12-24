@@ -12,7 +12,7 @@ app = Flask(__name__)
 
 # Настройка логирования
 logging.basicConfig(
-    level=logging.DEBUG,  # Увеличено до DEBUG для детального логирования
+    level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     handlers=[
         logging.FileHandler('api.log', encoding='utf-8'),
@@ -63,7 +63,7 @@ def parse_profile():
         
         url = data['url']
         logger.info(f"Получен запрос на парсинг: {url}")
-        logger.debug(f"Полные данные запроса: {data}")
+        logger.info(f"Полные данные запроса: {data}")
         
         # Создаем парсер
         parser = LinkedInParser(config, proxy_manager, rate_limiter)
@@ -91,7 +91,7 @@ def parse_profile():
             error_details = profile_data.get('errorDetails', {})
             
             logger.warning(f"Ошибка парсинга: {error_message}")
-            logger.debug(f"Детали ошибки: {error_details}")
+            logger.warning(f"Детали ошибки: {error_details}")
             
             return jsonify({
                 'status': 'error',

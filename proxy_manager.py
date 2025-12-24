@@ -41,10 +41,10 @@ class ProxyManager:
         """
         try:
             logger.info("Получение списка прокси через ProxyScrape API...")
-            logger.debug(f"URL API прокси: {self.api_url}")
+            logger.info(f"URL API прокси: {self.api_url}")
             response = requests.get(self.api_url, timeout=10)
             
-            logger.debug(f"Ответ API прокси: статус {response.status_code}, размер {len(response.text)} байт")
+            logger.info(f"Ответ API прокси: статус {response.status_code}, размер {len(response.text)} байт")
             
             if response.status_code == 200:
                 # Прокси возвращаются в виде текста, по одному на строку
@@ -187,7 +187,7 @@ class ProxyManager:
             if proxy_url.startswith('http://'):
                 proxy = proxy_url.replace('http://', '')
                 self.failed_proxies.add(proxy)
-                logger.debug(f"Прокси {proxy} помечен как неработающий")
+                logger.info(f"Прокси {proxy} помечен как неработающий")
     
     def reset(self):
         """Сброс состояния менеджера прокси"""
